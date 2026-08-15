@@ -69,7 +69,8 @@ def fid_from_activations(act1: np.ndarray, act2: np.ndarray) -> float:
 
 def load_real_cifar(n: int):
     """Load ``n`` real CIFAR-10 test images as a [0, 1] tensor."""
-    ds = torchvision.datasets.CIFAR10(root="./data", train=False, download=True, transform=T.ToTensor())
+    # fast.ai mirror ships CIFAR-10 as ImageFolder (test/<class>/*.png)
+    ds = torchvision.datasets.ImageFolder(root="./data/cifar10/test", transform=T.ToTensor())
     idx = np.random.default_rng(0).choice(len(ds), n, replace=False)
     return torch.stack([ds[i][0] for i in idx])
 

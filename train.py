@@ -37,7 +37,8 @@ class EMA:
 def get_dataset(name: str):
     if name == "cifar10":
         tf = T.Compose([T.RandomHorizontalFlip(), T.ToTensor(), T.Normalize([0.5] * 3, [0.5] * 3)])
-        ds = torchvision.datasets.CIFAR10(root="./data", train=True, download=True, transform=tf)
+        # fast.ai mirror ships CIFAR-10 as ImageFolder (train/<class>/*.png)
+        ds = torchvision.datasets.ImageFolder(root="./data/cifar10/train", transform=tf)
         return ds, 3
     tf = T.Compose([T.Pad(2), T.ToTensor(), T.Normalize([0.5], [0.5])])  # 28 -> 32
     ds = torchvision.datasets.MNIST(root="./data", train=True, download=True, transform=tf)
