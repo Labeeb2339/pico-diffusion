@@ -12,6 +12,8 @@ env/
 data/
 out/
 out_mnist/
+out_cifar/
+fid_result.txt
 *.png
 *.pt
 *.log
