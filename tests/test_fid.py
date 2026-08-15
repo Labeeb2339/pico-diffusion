@@ -29,3 +29,25 @@ def test_fid_increases_with_distance():
     d_far = frechet_distance(mu, sig, np.full(8, 5.0), sig)
     assert d_same < 1e-9
     assert d_far > 1.0  # a 5.0 mean shift is a large FID
+
+
+def test_fid_different_covariances_nonnegative():
+    # Regression: S1 @ S2 is NOT symmetric in general. The old code ran eigh on
+    # it directly and produced a NEGATIVE "FID" (-401.51 on the real CIFAR run).
+    # The fixed trace-identity path must give a non-negative, finite, symmetric
+    # distance even for two unrelated covariance matrices.
+    rng = np.random.default_rng(7)
+    A = rng.standard_normal((20, 20))
+    B = rng.standard_normal((20, 20))
+    S1 = A @ A.T + 0.1 * np.eye(20)
+    S2 = B @ B.T + 0.1 * np.eye(20)
+    mu1 = rng.standard_normal(20)
+    mu2 = rng.standard_normal(20)
+
+    d = frechet_distance(mu1, S1, mu2, S2)
+    assert np.isfinite(d)
+    assert d >= 0.0, f"FID must be non-negative, got {d}"
+
+    # Frechet distance is symmetric in its arguments.
+    d2 = frechet_distance(mu2, S2, mu1, S1)
+    assert abs(d - d2) < 1e-6

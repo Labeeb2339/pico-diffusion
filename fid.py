@@ -5,12 +5,13 @@ the InceptionV3 feature distributions of real and generated images. Lower is
 better; a perfect generator scores ~0.
 
 Uses torchvision's pretrained InceptionV3 (features from the final pooling
-layer) and a dependency-free Frechet-distance (via eigendecomposition, no scipy).
+layer) and a dependency-free Frechet distance (via eigendecomposition, no scipy).
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 
 import numpy as np
 import torch
@@ -49,16 +50,42 @@ def compute_activations(model, images: torch.Tensor, device, batch_size: int = 6
 
 
 def _sqrtm(mat: np.ndarray) -> np.ndarray:
-    """Matrix square root of a symmetric PSD matrix (no scipy dependency)."""
+    """Matrix square root of a SYMMETRIC PSD matrix (no scipy dependency).
+
+    Only valid when ``mat`` is symmetric: ``eigh`` reads just the lower
+    triangle, so passing a non-symmetric matrix silently returns wrong values.
+    """
     vals, vecs = np.linalg.eigh(mat)
     vals = np.clip(vals, 0.0, None)
     return (vecs * np.sqrt(vals)) @ vecs.T
 
 
+def _regularize(sigma: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+    """Keep the covariance well-conditioned (n_samples ~ n_features => near-singular)."""
+    return sigma + eps * np.eye(sigma.shape[0])
+
+
 def frechet_distance(mu1, sigma1, mu2, sigma2) -> float:
+    """Frechet distance between two Gaussians, dependency-free.
+
+    FID = ||mu1 - mu2||^2 + Tr(S1 + S2 - 2 sqrt(S1 S2)).
+
+    ``S1 @ S2`` is NOT symmetric in general, so we cannot ``eigh`` it directly.
+    We instead use the trace identity
+
+        Tr(sqrt(S1 S2)) = Tr(sqrt(S1^(1/2) S2 S1^(1/2)))
+
+    where ``S1 S2`` is *similar* to the symmetric PSD matrix
+    ``S1^(1/2) S2 S1^(1/2)``, so ``eigh`` is valid there. This avoids both
+    scipy and a matrix inverse (we only ever need the trace).
+    """
     diff = mu1 - mu2
-    covmean = _sqrtm(sigma1 @ sigma2)
-    return float(diff @ diff + np.trace(sigma1 + sigma2 - 2.0 * covmean))
+    sigma1 = _regularize(sigma1)
+    sigma2 = _regularize(sigma2)
+    s1_sqrt = _sqrtm(sigma1)                     # symmetric PSD -> eigh valid
+    middle = s1_sqrt @ sigma2 @ s1_sqrt          # symmetric PSD -> eigh valid
+    covmean_trace = float(np.trace(_sqrtm(middle)))
+    return float(diff @ diff + np.trace(sigma1) + np.trace(sigma2) - 2.0 * covmean_trace)
 
 
 def fid_from_activations(act1: np.ndarray, act2: np.ndarray) -> float:
@@ -94,24 +121,54 @@ def main() -> None:
     ap.add_argument("--image-size", type=int, default=32)
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--no-cache", action="store_true", help="recompute images+features from scratch")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    ckpt_dir = os.path.dirname(os.path.abspath(args.ckpt))
+    cache_dir = os.path.join(ckpt_dir, "_fid_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+
+    def _load_or(name, fn):
+        p = os.path.join(cache_dir, name)
+        if os.path.exists(p) and not args.no_cache:
+            print(f"  cache hit: {name}")
+            return np.load(p)
+        a = fn()
+        np.save(p, a)
+        return a
+
     print("loading inception (first run downloads weights) ...")
     inception = get_inception(device)
 
     print(f"generating {args.n} samples ...")
-    fake = generate_samples(args.ckpt, args.n, args.channels, args.image_size, device, args.steps)
+    fake_np = _load_or(
+        "fake_imgs.npy",
+        lambda: generate_samples(args.ckpt, args.n, args.channels, args.image_size, device, args.steps).cpu().numpy(),
+    )
 
     print("loading real CIFAR-10 test images ...")
-    real = load_real_cifar(args.n)
+    real_np = _load_or("real_imgs.npy", lambda: load_real_cifar(args.n).numpy())
 
     print("extracting features ...")
-    act_fake = compute_activations(inception, fake, device, args.batch_size)
-    act_real = compute_activations(inception, real, device, args.batch_size)
+    act_fake = _load_or(
+        "act_fake.npy",
+        lambda: compute_activations(inception, torch.from_numpy(fake_np), device, args.batch_size),
+    )
+    act_real = _load_or(
+        "act_real.npy",
+        lambda: compute_activations(inception, torch.from_numpy(real_np), device, args.batch_size),
+    )
 
     fid = fid_from_activations(act_real, act_fake)
+
+    # Sanity: FID of the real set against itself must be ~0, else the
+    # Frechet implementation is wrong (this catches the non-symmetric sqrtm bug).
+    mu_r, sig_r = act_real.mean(axis=0), np.cov(act_real, rowvar=False)
+    fid_self = frechet_distance(mu_r, sig_r, mu_r, sig_r)
+
     print(f"\nFID (n={args.n}): {fid:.2f}")
+    print(f"sanity FID(real, real) = {fid_self:.5f}  (must be ~0)")
 
 
 if __name__ == "__main__":
