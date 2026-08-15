@@ -78,6 +78,10 @@ def main() -> None:
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     ema = EMA(model, decay=args.ema_decay)
 
+    # AMP: bfloat16 autocast + GradScaler (uses the Blackwell tensor cores).
+    use_amp = device == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+
     start_step = 0
     if args.ckpt:
         ck = torch.load(args.ckpt, map_location=device)
@@ -96,10 +100,12 @@ def main() -> None:
         for x, _ in loader:
             x = x.to(device)
             t = torch.randint(0, args.timesteps, (x.shape[0],), device=device)
-            loss = diffusion.p_losses(model, x, t)
+            with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=use_amp):
+                loss = diffusion.p_losses(model, x, t)
             opt.zero_grad()
-            loss.backward()
-            opt.step()
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
             ema.update()
             losses.append(loss.item())
             step += 1
