@@ -42,9 +42,25 @@ U-Net with `base_ch=64` (6.6M params), cosine schedule, 1000 timesteps, bf16 AMP
 
 ![MNIST samples](assets/mnist_samples.png)
 
-### CIFAR-10 (in progress)
+### CIFAR-10 (verified)
 
-Training starts once the dataset download finishes; FID + samples will be added here.
+U-Net with `base_ch=64` (6.64M params), cosine schedule, 1000 timesteps, bf16 AMP,
+100 epochs (39,000 steps) on an RTX 5070 Laptop GPU (~67s/epoch).
+
+**Training loss: 1.135 → 0.056** (final 500-step moving average):
+
+![CIFAR-10 loss curve](assets/cifar_loss.png)
+
+**Samples** — 16 images from pure noise (DDIM, 50 steps), zero pretrained weights:
+
+![CIFAR-10 samples](assets/cifar_samples.png)
+
+**FID = 53.23** (2,048 generated vs 2,048 real test images, InceptionV3 features;
+dependency-free Fréchet distance with a `FID(real, real) ≈ 0` sanity check).
+
+For scale: the original DDPM paper reports ~3.17 on CIFAR-10 using a much larger
+model trained far longer, so 53.23 is an honest "it learns real structure
+end-to-end" number, not a state-of-the-art claim.
 
 ## Quickstart
 

@@ -16,6 +16,8 @@ out_mnist/
 *.pt
 *.log
 losses.json
+# ...except the curated README figures
+!assets/*.png
 
 # OS / editor
 .DS_Store
