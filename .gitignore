@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data + training outputs (regenerable)
+data/
+out/
+out_mnist/
+*.png
+*.pt
+*.log
+losses.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

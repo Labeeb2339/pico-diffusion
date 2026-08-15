@@ -1,0 +1,5 @@
+# Install torch + torchvision with the CUDA wheel:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+torch>=2.4
+torchvision>=0.19
