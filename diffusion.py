@@ -57,10 +57,16 @@ class GaussianDiffusion:
         sqrt_omac = self.sqrt_one_minus_alphas_cumprod[t][:, None, None, None]
         return sqrt_ac * x0 + sqrt_omac * noise
 
-    def p_losses(self, model, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def p_losses(self, model, x0: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None, p_uncond: float = 0.0) -> torch.Tensor:
         noise = torch.randn_like(x0)
         xt = self.q_sample(x0, t, noise)
-        return F.mse_loss(model(xt, t), noise)
+        if y is not None and p_uncond > 0.0:
+            null = getattr(model, "num_classes", None)
+            if null is not None:
+                # classifier-free guidance: drop labels to the null class
+                drop = torch.rand(y.shape[0], device=y.device) < p_uncond
+                y = torch.where(drop, torch.full_like(y, null), y)
+        return F.mse_loss(model(xt, t, y), noise)
 
     @torch.no_grad()
     def p_sample(self, model, x: torch.Tensor, t: torch.Tensor, t_index: int) -> torch.Tensor:
@@ -86,9 +92,15 @@ class GaussianDiffusion:
 
     @torch.no_grad()
     def ddim_sample(
-        self, model, shape: tuple[int, ...], device, sampling_steps: int = 50, eta: float = 0.0
+        self, model, shape: tuple[int, ...], device, sampling_steps: int = 50, eta: float = 0.0,
+        y: torch.Tensor | None = None, w: float = 0.0,
     ) -> torch.Tensor:
-        """DDIM sampling (``eta=0`` deterministic, ``eta=1`` DDPM-like)."""
+        """DDIM sampling (``eta=0`` deterministic, ``eta=1`` DDPM-like).
+
+        ``y`` = class labels (conditional model), ``w`` = classifier-free
+        guidance scale (0 = off). With ``w > 0`` the model predicts
+        ``uncond + w * (cond - uncond)`` at each step.
+        """
         times = torch.linspace(self.timesteps - 1, 0, sampling_steps, dtype=torch.long, device=device)
         x = torch.randn(shape, device=device)
         for i in range(len(times) - 1):
@@ -96,7 +108,13 @@ class GaussianDiffusion:
             t_prev = times[i + 1]
             t_b = torch.full((shape[0],), t, device=device, dtype=torch.long)
 
-            pred_noise = model(x, t_b)
+            if y is not None and w > 0.0:
+                null = torch.full((shape[0],), model.num_classes, device=device, dtype=torch.long)
+                pred_cond = model(x, t_b, y)
+                pred_uncond = model(x, t_b, null)
+                pred_noise = pred_uncond + w * (pred_cond - pred_uncond)
+            else:
+                pred_noise = model(x, t_b, y)
 
             ac_t = self.alphas_cumprod[t]
             ac_prev = self.alphas_cumprod[t_prev]

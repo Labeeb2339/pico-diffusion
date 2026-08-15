@@ -119,9 +119,13 @@ class UNet(nn.Module):
         attn_res: tuple[int, ...] = (16, 8),
         dropout: float = 0.1,
         image_size: int = 32,
+        num_classes: int | None = None,
     ):
         super().__init__()
         self.time_embed = TimeEmbedding(time_dim)
+        self.num_classes = num_classes
+        # +1 index is the "null" class, used for classifier-free guidance.
+        self.class_emb = nn.Embedding(num_classes + 1, time_dim) if num_classes else None
         chs = [base_ch * m for m in ch_mults]
 
         self.in_conv = nn.Conv2d(in_channels, chs[0], 3, padding=1)
@@ -147,8 +151,10 @@ class UNet(nn.Module):
         self.out_norm = nn.GroupNorm(32, chs[0])
         self.out_conv = nn.Conv2d(chs[0], in_channels, 3, padding=1)
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
         t_emb = self.time_embed(t)
+        if y is not None and self.class_emb is not None:
+            t_emb = t_emb + self.class_emb(y)
         x = self.in_conv(x)
 
         skips: list[torch.Tensor] = []

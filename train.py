@@ -1,4 +1,4 @@
-"""Train a from-scratch DDPM on CIFAR-10 or MNIST."""
+"""Train a from-scratch DDPM on CIFAR-10 or MNIST (optionally class-conditioned)."""
 
 from __future__ import annotations
 
@@ -39,16 +39,19 @@ def get_dataset(name: str):
         tf = T.Compose([T.RandomHorizontalFlip(), T.ToTensor(), T.Normalize([0.5] * 3, [0.5] * 3)])
         # fast.ai mirror ships CIFAR-10 as ImageFolder (train/<class>/*.png)
         ds = torchvision.datasets.ImageFolder(root="./data/cifar10/train", transform=tf)
-        return ds, 3
+        return ds, 3, 10
     tf = T.Compose([T.Pad(2), T.ToTensor(), T.Normalize([0.5], [0.5])])  # 28 -> 32
     ds = torchvision.datasets.MNIST(root="./data", train=True, download=True, transform=tf)
-    return ds, 1
+    return ds, 1, None
 
 
 @torch.no_grad()
-def make_samples(diffusion, model, device, ch, image_size, n=16, steps=50):
+def make_samples(diffusion, model, device, ch, image_size, num_classes, n=16, steps=50, cfg_scale=0.0):
     model.eval()
-    x = diffusion.ddim_sample(model, (n, ch, image_size, image_size), device, sampling_steps=steps)
+    y = None
+    if num_classes is not None:
+        y = torch.arange(n, device=device) % num_classes  # cycle through all classes
+    x = diffusion.ddim_sample(model, (n, ch, image_size, image_size), device, sampling_steps=steps, y=y, w=cfg_scale)
     return torch.clamp((x + 1) / 2, 0, 1)
 
 
@@ -63,6 +66,8 @@ def main() -> None:
     ap.add_argument("--base-ch", type=int, default=64)
     ap.add_argument("--ema-decay", type=float, default=0.995)
     ap.add_argument("--sample-every", type=int, default=1000)
+    ap.add_argument("--cfg-scale", type=float, default=2.0, help="classifier-free guidance scale (0 = off)")
+    ap.add_argument("--cfg-dropout", type=float, default=0.1, help="prob of dropping the label during training (CFG)")
     ap.add_argument("--out-dir", default="out")
     ap.add_argument("--ckpt", default=None)
     args = ap.parse_args()
@@ -71,10 +76,10 @@ def main() -> None:
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    ds, ch = get_dataset(args.dataset)
+    ds, ch, num_classes = get_dataset(args.dataset)
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=2, drop_last=True)
 
-    model = UNet(in_channels=ch, base_ch=args.base_ch, image_size=args.image_size).to(device)
+    model = UNet(in_channels=ch, base_ch=args.base_ch, image_size=args.image_size, num_classes=num_classes).to(device)
     diffusion = GaussianDiffusion(timesteps=args.timesteps).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     ema = EMA(model, decay=args.ema_decay)
@@ -98,11 +103,12 @@ def main() -> None:
     model.train()
     for epoch in range(args.epochs):
         t0 = time.time()
-        for x, _ in loader:
+        for x, y in loader:
             x = x.to(device)
+            y = y.to(device) if num_classes is not None else None
             t = torch.randint(0, args.timesteps, (x.shape[0],), device=device)
             with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=use_amp):
-                loss = diffusion.p_losses(model, x, t)
+                loss = diffusion.p_losses(model, x, t, y, p_uncond=args.cfg_dropout if num_classes else 0.0)
             opt.zero_grad()
             scaler.scale(loss).backward()
             scaler.step(opt)
@@ -117,7 +123,7 @@ def main() -> None:
 
             if step % args.sample_every == 0:
                 ema.apply()
-                samples = make_samples(diffusion, model, device, ch, args.image_size)
+                samples = make_samples(diffusion, model, device, ch, args.image_size, num_classes, cfg_scale=args.cfg_scale)
                 save_image(samples, out / f"sample_{step:07d}.png", nrow=4)
                 torch.save({"model": model.state_dict(), "ema": ema.shadow, "step": step}, out / "ckpt.pt")
                 model.train()
@@ -126,7 +132,7 @@ def main() -> None:
         print(f"epoch {epoch + 1}/{args.epochs} done in {time.time() - t0:.1f}s")
 
     ema.apply()
-    samples = make_samples(diffusion, model, device, ch, args.image_size)
+    samples = make_samples(diffusion, model, device, ch, args.image_size, num_classes, cfg_scale=args.cfg_scale)
     save_image(samples, out / "final.png", nrow=4)
     torch.save({"model": model.state_dict(), "ema": ema.shadow, "step": step}, out / "ckpt.pt")
     json.dump({"losses": losses}, open(out / "losses.json", "w"))
