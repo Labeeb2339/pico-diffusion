@@ -48,7 +48,9 @@ def test_q_sample_limits(model_and_diffusion):
     x0 = torch.randn(8, 3, 32, 32, device=device)
     t0 = torch.zeros(8, dtype=torch.long, device=device)
     tT = torch.full((8,), 99, dtype=torch.long, device=device)
-    assert torch.allclose(diffusion.q_sample(x0, t0), x0, atol=1e-5)  # t=0 -> x0
+    # Cosine schedule clips beta[0] to 1e-4, so t=0 is x0 plus ~1e-2 noise
+    # (alpha_cumprod[0] ~= 0.9999), not exact identity.
+    assert torch.allclose(diffusion.q_sample(x0, t0), x0, atol=0.05)
     xT = diffusion.q_sample(x0, tT)
     # at t=T the signal is almost entirely noise
     assert xT.std() > 0.5
