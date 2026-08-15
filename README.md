@@ -62,6 +62,22 @@ For scale: the original DDPM paper reports ~3.17 on CIFAR-10 using a much larger
 model trained far longer, so 53.23 is an honest "it learns real structure
 end-to-end" number, not a state-of-the-art claim.
 
+### Class-conditioned generation + classifier-free guidance
+
+`model.py` gains a class embedding (`num_classes`), `train.py` trains on CIFAR-10
+labels with 10% label dropout, and `ddim_sample`/`sample.py` support
+classifier-free guidance: `pred = uncond + w * (cond - uncond)` at each step.
+
+```bash
+# train a conditional model
+python train.py --dataset cifar10 --epochs 100 --out-dir out_cifar_cond --cfg-scale 2.0 --cfg-dropout 0.1
+
+# sample one class (e.g. class 3) with guidance
+python sample.py --ckpt out_cifar_cond/ckpt.pt --num-classes 10 --class-idx 3 --cfg-scale 3.0
+```
+
+*(conditional results + FID added once training finishes)*
+
 ## Quickstart
 
 ```bash
