@@ -103,13 +103,18 @@ def load_real_cifar(n: int):
 
 
 @torch.no_grad()
-def generate_samples(ckpt_path, n, channels, image_size, device, steps=50):
-    model = UNet(in_channels=channels, image_size=image_size).to(device)
+def generate_samples(ckpt_path, n, channels, image_size, device, steps=50,
+                     num_classes=None, cfg_scale=0.0):
+    model = UNet(in_channels=channels, image_size=image_size, num_classes=num_classes).to(device)
     ck = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ck["ema"] if "ema" in ck else ck["model"])
     model.eval()
     diffusion = GaussianDiffusion().to(device)
-    x = diffusion.ddim_sample(model, (n, channels, image_size, image_size), device, sampling_steps=steps)
+    y = None
+    if num_classes is not None:
+        # uniform labels match the real CIFAR-10 class distribution
+        y = torch.randint(0, num_classes, (n,), device=device)
+    x = diffusion.ddim_sample(model, (n, channels, image_size, image_size), device, sampling_steps=steps, y=y, w=cfg_scale)
     return torch.clamp((x + 1) / 2, 0, 1)
 
 
@@ -121,6 +126,8 @@ def main() -> None:
     ap.add_argument("--image-size", type=int, default=32)
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--num-classes", type=int, default=None, help="conditional model: number of classes")
+    ap.add_argument("--cfg-scale", type=float, default=0.0, help="classifier-free guidance scale")
     ap.add_argument("--no-cache", action="store_true", help="recompute images+features from scratch")
     args = ap.parse_args()
 
@@ -144,7 +151,10 @@ def main() -> None:
     print(f"generating {args.n} samples ...")
     fake_np = _load_or(
         "fake_imgs.npy",
-        lambda: generate_samples(args.ckpt, args.n, args.channels, args.image_size, device, args.steps).cpu().numpy(),
+        lambda: generate_samples(
+            args.ckpt, args.n, args.channels, args.image_size, device, args.steps,
+            num_classes=args.num_classes, cfg_scale=args.cfg_scale,
+        ).cpu().numpy(),
     )
 
     print("loading real CIFAR-10 test images ...")
