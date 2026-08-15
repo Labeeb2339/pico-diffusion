@@ -29,10 +29,22 @@ honestly.
 
 ## Results
 
-*Trained on an NVIDIA RTX 5070 Laptop GPU. Results, loss curves, and sample grids
-are filled in after each training run — see `out/` for the artifacts.*
+### MNIST (verified)
 
-<!-- results table + sample images go here after training -->
+U-Net with `base_ch=64` (6.6M params), cosine schedule, 1000 timesteps, bf16 AMP,
+50 epochs (23,400 steps) on an RTX 5070 Laptop GPU (~77s/epoch).
+
+**Training loss: 1.19 → 0.028** (final 500-step moving average):
+
+![MNIST loss curve](assets/mnist_loss.png)
+
+**Samples** — 16 digits from pure noise (DDIM, 50 steps), zero pretrained weights:
+
+![MNIST samples](assets/mnist_samples.png)
+
+### CIFAR-10 (in progress)
+
+Training starts once the dataset download finishes; FID + samples will be added here.
 
 ## Quickstart
 
