@@ -68,6 +68,17 @@ end-to-end" number, not a state-of-the-art claim.
 labels with 10% label dropout, and `ddim_sample`/`sample.py` support
 classifier-free guidance: `pred = uncond + w * (cond - uncond)` at each step.
 
+**Samples** — 20 images, 2 per class, classifier-free guidance `w=3.0`:
+
+![CIFAR-10 conditional samples](assets/cifar_cond_samples.png)
+
+![CIFAR-10 conditional loss curve](assets/cifar_cond_loss.png)
+
+**FID = 39.44** (class-conditioned, CFG `w=2.0`) — down from **53.23** for the
+unconditional model. The class embedding + guidance give the model a strong
+"which class am I drawing" prior, so the images sit ~26% closer to the real
+CIFAR-10 distribution.
+
 ```bash
 # train a conditional model
 python train.py --dataset cifar10 --epochs 100 --out-dir out_cifar_cond --cfg-scale 2.0 --cfg-dropout 0.1
@@ -75,8 +86,6 @@ python train.py --dataset cifar10 --epochs 100 --out-dir out_cifar_cond --cfg-sc
 # sample one class (e.g. class 3) with guidance
 python sample.py --ckpt out_cifar_cond/ckpt.pt --num-classes 10 --class-idx 3 --cfg-scale 3.0
 ```
-
-*(conditional results + FID added once training finishes)*
 
 ## Quickstart
 
