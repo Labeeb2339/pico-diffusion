@@ -6,7 +6,7 @@ A U-Net learns to denoise pure noise back into real images; DDIM turns that into
 fast deterministic sampler. Every line is written from scratch and benchmarked
 honestly.
 
-> Part of a from-scratch ML systems series: [pico-kernels](https://github.com/Labeeb2339/pico-kernels) (Triton kernels) · [PicoLM](https://github.com/Labeeb2339/picolm) (a GPT from scratch).
+> Part of a from-scratch ML systems series: [pico-kernels](https://github.com/Labeeb2339/pico-kernels) (Triton kernels) · [PicoLM](https://github.com/Labeeb2339/picolm) (a GPT from scratch) · [pico-engine](https://github.com/Labeeb2339/pico-engine) (a GGUF inference engine).
 
 ## What's inside
 
