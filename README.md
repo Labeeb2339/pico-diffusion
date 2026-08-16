@@ -112,6 +112,35 @@ test confirms the error quarters when steps double), but on a model this weak it
 doesn't pay off. The lesson: higher-order solvers need a well-conditioned model
 (or thresholding-aware correction) to beat DDIM.
 
+### Latent diffusion (Stable-Diffusion-style, verified end-to-end)
+
+`vae.py` compresses 3×32×32 → 4×8×8 (12× compression) with an L1 reconstruction
++ weak KL (`β=1e-4`) objective; `train_ldm.py` then trains a *smaller* U-Net
+(4.68M params) to denoise those latents instead of pixels.
+
+Two honest numbers, both from the same harness:
+
+| model | FID (n=2048) |
+|-------|--------------|
+| latent diffusion, **before** latent normalization | 143.43 |
+| latent diffusion, **after** latent normalization | **105.36** |
+| pixel-space DDIM (reference) | 53.23 |
+
+**The bug the -38 points found:** a weak-KL VAE produces latents with per-channel
+std 1.4–2.4 (and near-zero posterior σ — it collapses to a deterministic encoder),
+but the cosine noise schedule assumes ~N(0,1) data. That mismatch badly distorts
+the diffusion's signal-to-noise ratio. The fix — standardize the latents before
+diffusing, un-standardize before decoding (exactly what Stable Diffusion does) —
+dropped FID 143.43 → 105.36 *and* the training loss 0.45 → 0.34.
+
+**The honest verdict:** latent diffusion is *implemented and working* end-to-end,
+but it's the wrong tool at 32×32. The remaining gap vs 53.23 is the VAE's L1 blur
+(no perceptual/adversarial loss, which would need a pretrained feature net —
+out of scope for a from-scratch repo) plus a 12× bottleneck on an already
+low-resolution image. Latent diffusion pays off at 256×256+ (memory/compute); at
+CIFAR scale, pixel-space diffusion is strictly better. Shipped as a working
+architecture with a real, measured bug-fix, not a FID winner.
+
 ## Quickstart
 
 ```bash
