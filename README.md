@@ -13,6 +13,8 @@ honestly.
 | **U-Net** (`model.py`) | Residual blocks with time conditioning, group norm + SiLU, self-attention at low resolutions, encoder-decoder with skip connections |
 | **DDPM** (`diffusion.py`) | Forward (add-noise) process + cosine noise schedule + the reverse sampler (Ho et al., 2020) |
 | **DDIM** (`diffusion.py`) | Deterministic `eta=0` sampler that trades steps for speed (Song et al., 2020) |
+| **DPM-Solver++ 2M** (`diffusion.py`) | 2nd-order multistep ODE solver (Lu et al., 2022); its 1st-order step is *exactly* DDIM |
+| **Latent diffusion** (`vae.py`, `train_ldm.py`) | VAE compresses 3×32×32 → 4×8×8 latent, then a U-Net denoises *latents* |
 | **Training** (`train.py`) | Noise-prediction MSE loss, AdamW, EMA of weights, periodic sample + checkpoint saves |
 | **Sampling** (`sample.py`) | Generate a grid of images from a checkpoint |
 
@@ -87,6 +89,29 @@ python train.py --dataset cifar10 --epochs 100 --out-dir out_cifar_cond --cfg-sc
 python sample.py --ckpt out_cifar_cond/ckpt.pt --num-classes 10 --class-idx 3 --cfg-scale 3.0
 ```
 
+### Sampler study: DPM-Solver++ 2M (a useful failure case)
+
+`diffusion.py` also implements **DPM-Solver++ 2M**, a 2nd-order multistep solver
+of the probability-flow ODE. Its 1st-order step is algebraically *identical* to
+DDIM (`eta=0`) — proven in the docstring and unit-tested — and the 2nd-order
+term reuses the previous step's `x0` prediction.
+
+The honest result on this model is that it does **not** beat DDIM:
+
+| sampler        | FID @ 20 steps | FID @ 50 steps |
+|----------------|----------------|----------------|
+| DDIM (`eta=0`) | 67.64          | **53.23**      |
+| DPM-Solver++ 2M| 73.58          | 64.02          |
+
+Why: the solver needs an `x0 = (x − σ·ε)/α` clamp for stability (`α ≈ 1e-5` at
+high `t`, so an unclamped `x0` explodes). That clamp is essential on a weak
+model (FID 53), but it also *corrupts* the 2nd-order correction term, which
+assumes a smooth `x0` trajectory — so the multistep correction hurts instead of
+helping. The 2nd-order convergence is verified in isolation (a convergence-order
+test confirms the error quarters when steps double), but on a model this weak it
+doesn't pay off. The lesson: higher-order solvers need a well-conditioned model
+(or thresholding-aware correction) to beat DDIM.
+
 ## Quickstart
 
 ```bash
@@ -104,7 +129,12 @@ python sample.py --ckpt out/ckpt.pt --channels 3 --n 16
 
 ```
 model.py       # U-Net (residual blocks + attention + time embedding)
-diffusion.py   # DDPM + DDIM (schedules, forward, reverse, loss)
+diffusion.py   # DDPM + DDIM + DPM-Solver++ (schedules, forward, reverse, loss)
 train.py       # training loop with EMA + sampling
 sample.py      # sample a grid from a checkpoint
+vae.py         # VAE (encoder/decoder) for latent diffusion
+train_vae.py   # train the VAE
+train_ldm.py   # train diffusion in the VAE latent space
+sample_ldm.py  # sample latent diffusion + decode
+fid.py         # Fréchet Inception Distance eval (dependency-free)
 ```
