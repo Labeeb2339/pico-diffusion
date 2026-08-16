@@ -30,10 +30,28 @@ def get_dataset():
 
 
 @torch.no_grad()
-def make_samples(diffusion, model, vae, device, latent_ch, n=16, steps=50):
+def compute_latent_stats(vae, loader, device, max_batches=32):
+    """Per-channel mean/std of the deterministic latents (latent normalization).
+
+    The diffusion schedule assumes ~N(0,1) data, but a weak-KL VAE yields latents
+    with std >> 1. Standardizing them (LDM / Stable Diffusion) fixes the mismatch.
+    """
+    mus = []
+    for i, (x, _) in enumerate(loader):
+        if i >= max_batches:
+            break
+        mus.append(vae.encode_deterministic(x.to(device)))
+    all_mu = torch.cat(mus, dim=0)  # (N, C, H, W)
+    return (all_mu.mean(dim=(0, 2, 3), keepdim=True),
+            all_mu.std(dim=(0, 2, 3), keepdim=True))
+
+
+@torch.no_grad()
+def make_samples(diffusion, model, vae, device, latent_ch, latent_stats, n=16, steps=50):
     model.eval()
     vae.eval()
     z = diffusion.ddim_sample(model, (n, latent_ch, 8, 8), device, sampling_steps=steps)
+    z = z * latent_stats["std"] + latent_stats["mean"]  # un-standardize
     x = vae.decode(z)
     return torch.clamp((x + 1) / 2, 0, 1)
 
@@ -64,6 +82,13 @@ def main() -> None:
     ds = get_dataset()
     loader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=2, drop_last=True)
 
+    # Latent normalization (LDM/Stable Diffusion): the diffusion schedule assumes
+    # ~N(0,1) data, but a weak-KL VAE produces latents with std >> 1. Standardize.
+    mean, std = compute_latent_stats(vae, loader, device)
+    latent_stats = {"mean": mean, "std": std}
+    torch.save(latent_stats, out / "latent_stats.pt")
+    print(f"latent stats: mean={mean.flatten().tolist()} std={std.flatten().tolist()}")
+
     # Latent UNet: 4 x 8 x 8 -> denoise -> 4 x 8 x 8 (downsample 8->4->2).
     model = UNet(in_channels=args.latent_channels, base_ch=args.base_ch, image_size=8,
                  ch_mults=(1, 2, 2), attn_res=(8, 4)).to(device)
@@ -84,7 +109,7 @@ def main() -> None:
         for x, _ in loader:
             x = x.to(device)
             with torch.no_grad():
-                z = vae.encode_deterministic(x)  # (B, 4, 8, 8)
+                z = (vae.encode_deterministic(x) - mean) / std  # (B, 4, 8, 8)
             t = torch.randint(0, args.timesteps, (x.shape[0],), device=device)
             with torch.amp.autocast("cuda", dtype=torch.bfloat16, enabled=use_amp):
                 loss = diffusion.p_losses(model, z, t)
@@ -102,7 +127,7 @@ def main() -> None:
 
             if step % args.sample_every == 0:
                 ema.apply()
-                samples = make_samples(diffusion, model, vae, device, args.latent_channels)
+                samples = make_samples(diffusion, model, vae, device, args.latent_channels, latent_stats)
                 save_image(samples, out / f"sample_{step:07d}.png", nrow=4)
                 torch.save({"model": model.state_dict(), "ema": ema.shadow, "step": step}, out / "ckpt.pt")
                 model.train()
@@ -111,7 +136,7 @@ def main() -> None:
         print(f"epoch {epoch + 1}/{args.epochs} done in {time.time() - t0:.1f}s")
 
     ema.apply()
-    samples = make_samples(diffusion, model, vae, device, args.latent_channels)
+    samples = make_samples(diffusion, model, vae, device, args.latent_channels, latent_stats)
     save_image(samples, out / "final.png", nrow=4)
     torch.save({"model": model.state_dict(), "ema": ema.shadow, "step": step}, out / "ckpt.pt")
     json.dump({"losses": losses}, open(out / "losses.json", "w"))

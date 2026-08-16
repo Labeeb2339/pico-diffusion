@@ -19,7 +19,7 @@ from vae import VAE
 
 
 @torch.no_grad()
-def generate_ldm(vae_ckpt, ldm_ckpt, n, latent_ch, device, steps=50):
+def generate_ldm(vae_ckpt, ldm_ckpt, n, latent_ch, device, steps=50, latent_stats=None):
     vae = VAE(in_channels=3, latent_channels=latent_ch).to(device)
     vae.load_state_dict(torch.load(vae_ckpt, map_location=device)["model"])
     vae.eval()
@@ -31,6 +31,9 @@ def generate_ldm(vae_ckpt, ldm_ckpt, n, latent_ch, device, steps=50):
 
     diffusion = GaussianDiffusion().to(device)
     z = diffusion.ddim_sample(model, (n, latent_ch, 8, 8), device, sampling_steps=steps)
+    if latent_stats:
+        stats = torch.load(latent_stats, map_location=device)
+        z = z * stats["std"] + stats["mean"]  # de-normalize
     x = vae.decode(z)
     return torch.clamp((x + 1) / 2, 0, 1)
 
@@ -42,6 +45,7 @@ def main() -> None:
     ap.add_argument("--n", type=int, default=2048)
     ap.add_argument("--steps", type=int, default=50)
     ap.add_argument("--latent-channels", type=int, default=4)
+    ap.add_argument("--latent-stats", default=None, help="latent_stats.pt for de-normalization")
     ap.add_argument("--batch-size", type=int, default=64)
     args = ap.parse_args()
 
@@ -49,7 +53,7 @@ def main() -> None:
     inception = get_inception(device)
 
     print(f"generating {args.n} latent-diffusion samples ...")
-    fake = generate_ldm(args.vae_ckpt, args.ldm_ckpt, args.n, args.latent_channels, device, args.steps)
+    fake = generate_ldm(args.vae_ckpt, args.ldm_ckpt, args.n, args.latent_channels, device, args.steps, args.latent_stats)
 
     print("loading real CIFAR-10 test images ...")
     real = load_real_cifar(args.n)

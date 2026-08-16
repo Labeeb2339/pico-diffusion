@@ -21,6 +21,7 @@ def main() -> None:
     ap.add_argument("--sampler", choices=["ddim", "dpm"], default="ddim")
     ap.add_argument("--order", type=int, default=2)
     ap.add_argument("--latent-channels", type=int, default=4)
+    ap.add_argument("--latent-stats", default=None, help="latent_stats.pt for de-normalization")
     ap.add_argument("--base-ch", type=int, default=64)
     ap.add_argument("--out", default="ldm_samples.png")
     args = ap.parse_args()
@@ -45,6 +46,9 @@ def main() -> None:
         z = diffusion.ddim_sample(model, shape, device, sampling_steps=args.steps)
 
     with torch.no_grad():
+        if args.latent_stats:
+            stats = torch.load(args.latent_stats, map_location=device)
+            z = z * stats["std"] + stats["mean"]  # de-normalize
         x = vae.decode(z)
     x = torch.clamp((x + 1) / 2, 0, 1)
     save_image(x, args.out, nrow=int(args.n**0.5))
