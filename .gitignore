@@ -13,7 +13,10 @@ data/
 out/
 out_mnist/
 out_cifar/
+out_cifar_cond/
+_fid_cache/
 fid_result.txt
+fid_cond_result.txt
 *.png
 *.pt
 *.log
