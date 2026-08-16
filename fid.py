@@ -104,7 +104,7 @@ def load_real_cifar(n: int):
 
 @torch.no_grad()
 def generate_samples(ckpt_path, n, channels, image_size, device, steps=50,
-                     num_classes=None, cfg_scale=0.0):
+                     num_classes=None, cfg_scale=0.0, sampler="ddim", order=2):
     model = UNet(in_channels=channels, image_size=image_size, num_classes=num_classes).to(device)
     ck = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ck["ema"] if "ema" in ck else ck["model"])
@@ -114,7 +114,11 @@ def generate_samples(ckpt_path, n, channels, image_size, device, steps=50,
     if num_classes is not None:
         # uniform labels match the real CIFAR-10 class distribution
         y = torch.randint(0, num_classes, (n,), device=device)
-    x = diffusion.ddim_sample(model, (n, channels, image_size, image_size), device, sampling_steps=steps, y=y, w=cfg_scale)
+    if sampler == "dpm":
+        x = diffusion.dpm_solver_sample(model, (n, channels, image_size, image_size), device,
+                                        sampling_steps=steps, order=order, y=y, w=cfg_scale)
+    else:
+        x = diffusion.ddim_sample(model, (n, channels, image_size, image_size), device, sampling_steps=steps, y=y, w=cfg_scale)
     return torch.clamp((x + 1) / 2, 0, 1)
 
 
@@ -128,6 +132,8 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--num-classes", type=int, default=None, help="conditional model: number of classes")
     ap.add_argument("--cfg-scale", type=float, default=0.0, help="classifier-free guidance scale")
+    ap.add_argument("--sampler", choices=["ddim", "dpm"], default="ddim")
+    ap.add_argument("--order", type=int, default=2, help="DPM-Solver order (1 or 2)")
     ap.add_argument("--no-cache", action="store_true", help="recompute images+features from scratch")
     args = ap.parse_args()
 
@@ -148,12 +154,14 @@ def main() -> None:
     print("loading inception (first run downloads weights) ...")
     inception = get_inception(device)
 
-    print(f"generating {args.n} samples ...")
+    print(f"generating {args.n} samples ({args.sampler}, {args.steps} steps) ...")
+    key = f"{args.sampler}_{args.steps}_o{args.order}"
     fake_np = _load_or(
-        "fake_imgs.npy",
+        f"fake_imgs_{key}.npy",
         lambda: generate_samples(
             args.ckpt, args.n, args.channels, args.image_size, device, args.steps,
             num_classes=args.num_classes, cfg_scale=args.cfg_scale,
+            sampler=args.sampler, order=args.order,
         ).cpu().numpy(),
     )
 
@@ -162,7 +170,7 @@ def main() -> None:
 
     print("extracting features ...")
     act_fake = _load_or(
-        "act_fake.npy",
+        f"act_fake_{key}.npy",
         lambda: compute_activations(inception, torch.from_numpy(fake_np), device, args.batch_size),
     )
     act_real = _load_or(
