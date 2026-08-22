@@ -494,7 +494,7 @@ if ($environmentExitCode -ne 0) {
     throw "Environment probe failed with exit code $environmentExitCode. Verify the -Python environment and installed requirements."
 }
 
-& $Python -m pytest -q
+& $Python -m pytest -q --basetemp ".pytest-tmp\fid-evidence"
 $testExitCode = $LASTEXITCODE
 Assert-RepositoryState -ExpectedCommit $commit -Stage "Test suite"
 Assert-EvaluationInputsStable
