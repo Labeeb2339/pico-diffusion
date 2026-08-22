@@ -2,10 +2,12 @@
 
 ## What the published numbers mean
 
-The image-quality numbers currently quoted in `README.md` are **historical,
-pre-hardening internal FID-style runs**. They are useful as development evidence,
-but they are not current release-validation results and they are not canonical
-50,000-sample CIFAR-10 FID.
+The two pixel-space image-quality numbers currently quoted in `README.md` are
+**current-harness evaluation evidence for named legacy checkpoint bytes**. The
+sequential `--no-cache` run is published under
+[`evaluation_runs/20260822-162514Z`](evaluation_runs/20260822-162514Z). Sampler
+and latent-model numbers remain historical pre-hardening development evidence.
+None of these numbers is canonical 50,000-sample CIFAR-10 FID.
 
 The historical stdout files record that the runs reported completion and include
 their scores. They do **not** bind every run to a Git commit, full command, seed,
@@ -24,8 +26,8 @@ that the original training run is reproducible from the surviving metadata.
 
 | Claim in README | Evidence status | Current-harness rerun |
 |---|---|---|
-| Pixel DDIM: 53.23 at n=2,048 | Historical log + surviving checkpoint | Pending |
-| Conditional + CFG: 39.44 at n=2,048 | Historical log + surviving checkpoint | Pending |
+| Pixel DDIM: 54.4094 at n=2,048 | Schema-v2 receipt + stdout log + checksums; checkpoint `66b2558a…86ae` | Current for fixed checkpoint |
+| Conditional + CFG: 38.6036 at n=2,048 | Schema-v2 receipt + stdout log + checksums; checkpoint `40dab3fd…63f7` | Current for fixed checkpoint |
 | DDIM/DPM-Solver++ sampler table | Historical single runs; only DPM 20 has a surviving standalone log | Pending |
 | Latent: 143.43 before normalization | Historical log + surviving checkpoints | Pending |
 | Latent: 105.36 after normalization | Historical log + surviving checkpoints/stats | Pending |
@@ -94,7 +96,7 @@ if ($status) { throw "worktree must be clean" }
 $commit = git rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw "git rev-parse HEAD failed" }
 
-& $python -m pytest -q
+& $python -m pytest -q --basetemp ".pytest-tmp\fid-evidence"
 if ($LASTEXITCODE -ne 0) { throw "tests failed" }
 
 Get-FileHash -Algorithm SHA256 out_cifar\ckpt.pt
@@ -148,11 +150,11 @@ if (git status --porcelain) { throw "worktree changed during evaluation" }
 
 A clean clone can create `.venv` and install the CUDA PyTorch wheel plus
 `requirements.txt` as shown above and in `README.md`. It still needs the
-hash-matched checkpoint artifacts to reproduce the recorded scores. The local
-validation environment observed before the rerun was Python 3.11.15, NumPy
-2.4.6, PyTorch 2.11.0+cu128, torchvision 0.26.0+cu128, NVIDIA driver 592.15, and an RTX 5070
-Laptop GPU. Treat that as context rather than a substitute for the generated
-receipt.
+hash-matched checkpoint artifacts to reproduce the recorded scores. The run
+recorded Python 3.11.15, NumPy 2.4.6, PyTorch 2.11.0+cu128, torchvision
+0.26.0+cu128, CUDA 12.8, cuDNN version code 91900, NVIDIA driver 592.15, and an
+RTX 5070 Laptop GPU. Treat that as context rather than a substitute for the
+generated receipt.
 
 ## Acceptance rule
 

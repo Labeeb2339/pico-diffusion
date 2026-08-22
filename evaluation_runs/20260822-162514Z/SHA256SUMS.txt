@@ -1,0 +1,4 @@
+0cc1cc28d6c2f75c8577593e3164bc3175ff52d5c68e6102953ad0477fe0ad7a  fid-conditional-cfg2-ddim50-n2048.json
+a0222542bfcc16a8378de3eb72d81e3d5a01dfcc2296946d81274299385bd9c0  fid-conditional-cfg2-ddim50-n2048.log
+e39cff1fba84f30a98b225d9ecf76d8e6ae8b07d026f6a7e8b3e70a9c53f70b0  fid-unconditional-ddim50-n2048.json
+d6cb551fce28eec1a37d766237257a3a88410b0410a01bb08efb70862db2937a  fid-unconditional-ddim50-n2048.log

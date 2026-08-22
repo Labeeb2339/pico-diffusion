@@ -35,14 +35,15 @@ InceptionV3 only to extract features for the internal FID-style diagnostic.
 
 ## Results
 
-> **Evidence status (2026-08-22):** the image-quality scores below are
-> **historical pre-hardening runs**, not current release-validation results. They
-> predate the present seed controls, expanded cache keys, checkpoint binding, and
-> machine-readable receipts. The surviving files and their SHA-256 hashes are
-> inventoried in [`receipts/historical-fid-pre-hardening.json`](receipts/historical-fid-pre-hardening.json);
-> exact `--no-cache` reruns are specified in
-> [`EVALUATION_REPRODUCIBILITY.md`](EVALUATION_REPRODUCIBILITY.md). Until those
-> reruns finish, use the values as internal development evidence only.
+> **Evidence status (2026-08-22):** clean, sequential `--no-cache` evaluations
+> now bind the two surviving pixel-space checkpoints to commit `32f10ab`, the
+> canonical 10,000-image CIFAR-10 test-set identity, the same seeded 2,048-image
+> subset, every generated/evaluation array, and the recorded CUDA environment.
+> The receipts, stdout logs, and checksums are published in
+> [`evaluation_runs/20260822-162514Z`](evaluation_runs/20260822-162514Z).
+> Sampler and latent-model numbers remain historical pre-hardening evidence and
+> are inventoried separately in
+> [`receipts/historical-fid-pre-hardening.json`](receipts/historical-fid-pre-hardening.json).
 
 The surviving pixel and latent checkpoints also have **legacy training-loop
 provenance**. Their original loop applied EMA weights directly to the live model
@@ -65,7 +66,7 @@ artifact was trained in FP32; the current code correctly enables bf16 AMP on CUD
 
 ![MNIST samples](assets/mnist_samples.png)
 
-### CIFAR-10 (recorded training artifact; metric rerun pending)
+### CIFAR-10 (recorded training artifact; current fixed-checkpoint evaluation)
 
 U-Net with `base_ch=64` (6.64M params), cosine schedule, 1000 timesteps,
 100 epochs (39,000 steps) on an RTX 5070 Laptop GPU (~67s/epoch). The recorded
@@ -79,9 +80,12 @@ artifact was trained in FP32; the current code correctly enables bf16 AMP on CUD
 
 ![CIFAR-10 samples](assets/cifar_samples.png)
 
-**Historical pre-hardening internal FID-style score = 53.23** (2,048 generated
-vs 2,048 real test images, torchvision ImageNet InceptionV3 features;
-dependency-free Fréchet distance with a `score(real, real) ≈ 0` sanity check).
+**Current-harness internal FID-style score = 54.4094** (2,048 generated vs
+the same canonical seeded subset of 2,048 real test images, DDIM 50, seed 0,
+torchvision ImageNet InceptionV3 features). The real-vs-real sanity score was
+exactly `0.0`. This evaluates the preserved checkpoint with SHA-256
+`66b2558a…86ae`; it does not reproduce its legacy training run. The earlier
+pre-hardening log reported 53.23 under a less strictly bound harness.
 
 > **Metric boundary:** this is a small-sample, repository-specific diagnostic,
 > not canonical 50,000-sample CIFAR-10 FID. It is suitable for controlled
@@ -100,14 +104,16 @@ classifier-free guidance: `pred = uncond + w * (cond - uncond)` at each step.
 
 ![CIFAR-10 conditional loss curve](assets/cifar_cond_loss.png)
 
-**Historical pre-hardening internal FID-style score = 39.44**
-(class-conditioned, CFG `w=2.0`) — down ~26% from **53.23** for the
-unconditional checkpoint in the historical harness. This is an observational
-comparison between separately trained checkpoints, with training seeds and full
-training provenance not captured. It also combines two changes—class
-conditioning and inference-time guidance—so it is not a controlled A/B result.
-A current-harness rerun can verify the comparison for these fixed checkpoint
-hashes, but cannot remove those training confounders.
+**Current-harness internal FID-style score = 38.6036** (class-conditioned,
+CFG `w=2.0`, DDIM 50, n=2,048, seed 0), versus **54.4094** for the preserved
+unconditional checkpoint under the same commit, dataset identity, subset, and
+environment. The conditional score is 29.05% lower. This remains an
+observational comparison between separately trained checkpoints, with training
+seeds and full training provenance not captured. It also combines two
+changes—class conditioning and inference-time guidance—so it is not a
+controlled A/B result. The current receipts verify the fixed checkpoint bytes
+and evaluation protocol; they cannot remove those training confounders. The
+earlier pre-hardening log reported 39.44.
 
 ```bash
 # train a conditional model

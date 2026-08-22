@@ -4,4 +4,5 @@
 *.png binary
 *.pt binary
 *.npy binary
-evaluation_runs/** binary
+evaluation_runs/**/*.json binary
+evaluation_runs/**/*.log binary
