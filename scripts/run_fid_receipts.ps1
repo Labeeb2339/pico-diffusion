@@ -478,9 +478,9 @@ Write-Output "Conditional checkpoint SHA-256: $($conditionalCheckpoint.Sha256)"
 
 $environmentProbe = @'
 import numpy, platform, torch, torchvision
-gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none"
+gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'
 print(
-    "Python {} | NumPy {} | PyTorch {} | torchvision {} | CUDA {} | GPU {}".format(
+    'Python {} | NumPy {} | PyTorch {} | torchvision {} | CUDA {} | GPU {}'.format(
         platform.python_version(), numpy.__version__, torch.__version__,
         torchvision.__version__, torch.version.cuda, gpu
     )
