@@ -1,8 +1,8 @@
 """Train the VAE (encoder + decoder) for latent diffusion on CIFAR-10.
 
 Objective: L1 reconstruction + beta * KL. The result is a ``4 x 8 x 8`` latent
-that (a) reconstructs the image and (b) is roughly unit-Gaussian — the two
-properties the downstream diffusion model needs.
+that reconstructs the image; ``train_ldm.py`` measures and standardizes its
+channel statistics before diffusion training.
 """
 
 from __future__ import annotations
@@ -12,18 +12,19 @@ import time
 from pathlib import Path
 
 import torch
-from torch.utils.data import DataLoader
-import torchvision
 import torchvision.transforms as T
+from torch.utils.data import DataLoader
 from torchvision.utils import save_image
 
+from data_utils import cifar10_dataset
 from vae import VAE, vae_loss
 
 
 def get_dataset():
-    tf = T.Compose([T.RandomHorizontalFlip(), T.ToTensor(), T.Normalize([0.5] * 3, [0.5] * 3)])
-    ds = torchvision.datasets.ImageFolder(root="./data/cifar10/train", transform=tf)
-    return ds
+    tf = T.Compose(
+        [T.RandomHorizontalFlip(), T.ToTensor(), T.Normalize([0.5] * 3, [0.5] * 3)]
+    )
+    return cifar10_dataset(train=True, transform=tf)
 
 
 @torch.no_grad()
@@ -54,15 +55,21 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     ds = get_dataset()
-    loader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, num_workers=2, drop_last=True)
+    loader = DataLoader(
+        ds, batch_size=args.batch_size, shuffle=True, num_workers=2, drop_last=True
+    )
 
-    vae = VAE(in_channels=3, latent_channels=args.latent_channels, hidden=args.hidden).to(device)
+    vae = VAE(
+        in_channels=3, latent_channels=args.latent_channels, hidden=args.hidden
+    ).to(device)
     opt = torch.optim.AdamW(vae.parameters(), lr=args.lr)
-    use_amp = device == "cuda"
+    use_amp = device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     n_params = sum(p.numel() for p in vae.parameters())
-    print(f"device={device} vae params={n_params/1e6:.2f}M latent={args.latent_channels}x8x8 beta={args.beta}")
+    print(
+        f"device={device} vae params={n_params / 1e6:.2f}M latent={args.latent_channels}x8x8 beta={args.beta}"
+    )
 
     step = 0
     vae.train()
@@ -80,7 +87,9 @@ def main() -> None:
             step += 1
 
             if step % 200 == 0:
-                print(f"step {step} | loss {loss.item():.4f} | recon {recon_loss.item():.4f} | kl {kl.item():.4f}")
+                print(
+                    f"step {step} | loss {loss.item():.4f} | recon {recon_loss.item():.4f} | kl {kl.item():.4f}"
+                )
 
             if step % args.sample_every == 0:
                 grid = make_recon_grid(vae, device)

@@ -3,3 +3,5 @@
 
 torch>=2.4
 torchvision>=0.19
+numpy>=1.26
+pytest>=8.0

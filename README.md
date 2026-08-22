@@ -1,10 +1,11 @@
 # 🎨 PicoDiffusion — image generation from scratch
 
-**A diffusion model (DDPM + DDIM) implemented from first principles in PyTorch — no `diffusers`, no pretrained weights.**
+**A diffusion model (DDPM + DDIM) implemented from first principles in PyTorch — no `diffusers` and no pretrained generative weights.**
 
 A U-Net learns to denoise pure noise back into real images; DDIM turns that into a
-fast deterministic sampler. Every line is written from scratch and benchmarked
-honestly.
+fast deterministic sampler. The core U-Net and diffusion algorithms are
+implemented directly with PyTorch. Evaluation uses torchvision's pretrained
+InceptionV3 only to extract features for the internal FID-style diagnostic.
 
 > Part of a from-scratch ML systems series: [pico-kernels](https://github.com/Labeeb2339/pico-kernels) (Triton kernels) · [PicoLM](https://github.com/Labeeb2339/picolm) (a GPT from scratch) · [pico-engine](https://github.com/Labeeb2339/pico-engine) (a GGUF inference engine).
 
@@ -15,7 +16,7 @@ honestly.
 | **U-Net** (`model.py`) | Residual blocks with time conditioning, group norm + SiLU, self-attention at low resolutions, encoder-decoder with skip connections |
 | **DDPM** (`diffusion.py`) | Forward (add-noise) process + cosine noise schedule + the reverse sampler (Ho et al., 2020) |
 | **DDIM** (`diffusion.py`) | Deterministic `eta=0` sampler that trades steps for speed (Song et al., 2020) |
-| **DPM-Solver++ 2M** (`diffusion.py`) | 2nd-order multistep ODE solver (Lu et al., 2022); its 1st-order step is *exactly* DDIM |
+| **DPM-Solver++ 2M** (`diffusion.py`) | 2nd-order multistep ODE solver (Lu et al., 2022); without clipping, its 1st-order equation is algebraically equivalent to DDIM, while the stability clamp used here changes the finite-step update |
 | **Latent diffusion** (`vae.py`, `train_ldm.py`) | VAE compresses 3×32×32 → 4×8×8 latent, then a U-Net denoises *latents* |
 | **Training** (`train.py`) | Noise-prediction MSE loss, AdamW, EMA of weights, periodic sample + checkpoint saves |
 | **Sampling** (`sample.py`) | Generate a grid of images from a checkpoint |
@@ -29,14 +30,32 @@ honestly.
 3. **DDPM reverse** — start from pure noise and repeatedly denoise using the
    posterior `p(x_{t-1} | x_t)`.
 4. **DDIM reverse** — a non-Markovian shortcut that predicts `x_0` directly and
-   re-noises, so 50 steps produce samples as good as 1000 DDPM steps.
+   re-noises. In this project it produces useful samples with 49 model
+   evaluations from 50 timestep points, instead of a full 1000-step DDPM loop.
 
 ## Results
 
-### MNIST (verified)
+> **Evidence status (2026-08-22):** the image-quality scores below are
+> **historical pre-hardening runs**, not current release-validation results. They
+> predate the present seed controls, expanded cache keys, checkpoint binding, and
+> machine-readable receipts. The surviving files and their SHA-256 hashes are
+> inventoried in [`receipts/historical-fid-pre-hardening.json`](receipts/historical-fid-pre-hardening.json);
+> exact `--no-cache` reruns are specified in
+> [`EVALUATION_REPRODUCIBILITY.md`](EVALUATION_REPRODUCIBILITY.md). Until those
+> reruns finish, use the values as internal development evidence only.
 
-U-Net with `base_ch=64` (6.6M params), cosine schedule, 1000 timesteps, bf16 AMP,
-50 epochs (23,400 steps) on an RTX 5070 Laptop GPU (~77s/epoch).
+The surviving pixel and latent checkpoints also have **legacy training-loop
+provenance**. Their original loop applied EMA weights directly to the live model
+at each sampling interval before training continued. The current loop uses EMA
+only temporarily and then restores the training weights. A current-harness rerun
+therefore evaluates the exact recorded checkpoint bytes; it does not establish
+that those checkpoints were produced by the current training code.
+
+### MNIST (recorded training artifact)
+
+U-Net with `base_ch=64` (6.6M params), cosine schedule, 1000 timesteps,
+50 epochs (23,400 steps) on an RTX 5070 Laptop GPU (~77s/epoch). The recorded
+artifact was trained in FP32; the current code correctly enables bf16 AMP on CUDA.
 
 **Training loss: 1.19 → 0.028** (final 500-step moving average):
 
@@ -46,10 +65,11 @@ U-Net with `base_ch=64` (6.6M params), cosine schedule, 1000 timesteps, bf16 AMP
 
 ![MNIST samples](assets/mnist_samples.png)
 
-### CIFAR-10 (verified)
+### CIFAR-10 (recorded training artifact; metric rerun pending)
 
-U-Net with `base_ch=64` (6.64M params), cosine schedule, 1000 timesteps, bf16 AMP,
-100 epochs (39,000 steps) on an RTX 5070 Laptop GPU (~67s/epoch).
+U-Net with `base_ch=64` (6.64M params), cosine schedule, 1000 timesteps,
+100 epochs (39,000 steps) on an RTX 5070 Laptop GPU (~67s/epoch). The recorded
+artifact was trained in FP32; the current code correctly enables bf16 AMP on CUDA.
 
 **Training loss: 1.135 → 0.056** (final 500-step moving average):
 
@@ -59,12 +79,14 @@ U-Net with `base_ch=64` (6.64M params), cosine schedule, 1000 timesteps, bf16 AM
 
 ![CIFAR-10 samples](assets/cifar_samples.png)
 
-**FID = 53.23** (2,048 generated vs 2,048 real test images, InceptionV3 features;
-dependency-free Fréchet distance with a `FID(real, real) ≈ 0` sanity check).
+**Historical pre-hardening internal FID-style score = 53.23** (2,048 generated
+vs 2,048 real test images, torchvision ImageNet InceptionV3 features;
+dependency-free Fréchet distance with a `score(real, real) ≈ 0` sanity check).
 
-For scale: the original DDPM paper reports ~3.17 on CIFAR-10 using a much larger
-model trained far longer, so 53.23 is an honest "it learns real structure
-end-to-end" number, not a state-of-the-art claim.
+> **Metric boundary:** this is a small-sample, repository-specific diagnostic,
+> not canonical 50,000-sample CIFAR-10 FID. It is suitable for controlled
+> comparisons between runs in this repository, but must not be compared directly
+> with FID values reported in papers or from `pytorch-fid`/TensorFlow FID.
 
 ### Class-conditioned generation + classifier-free guidance
 
@@ -78,10 +100,14 @@ classifier-free guidance: `pred = uncond + w * (cond - uncond)` at each step.
 
 ![CIFAR-10 conditional loss curve](assets/cifar_cond_loss.png)
 
-**FID = 39.44** (class-conditioned, CFG `w=2.0`) — down from **53.23** for the
-unconditional model. The class embedding + guidance give the model a strong
-"which class am I drawing" prior, so the images sit ~26% closer to the real
-CIFAR-10 distribution.
+**Historical pre-hardening internal FID-style score = 39.44**
+(class-conditioned, CFG `w=2.0`) — down ~26% from **53.23** for the
+unconditional checkpoint in the historical harness. This is an observational
+comparison between separately trained checkpoints, with training seeds and full
+training provenance not captured. It also combines two changes—class
+conditioning and inference-time guidance—so it is not a controlled A/B result.
+A current-harness rerun can verify the comparison for these fixed checkpoint
+hashes, but cannot remove those training confounders.
 
 ```bash
 # train a conditional model
@@ -94,67 +120,116 @@ python sample.py --ckpt out_cifar_cond/ckpt.pt --num-classes 10 --class-idx 3 --
 ### Sampler study: DPM-Solver++ 2M (a useful failure case)
 
 `diffusion.py` also implements **DPM-Solver++ 2M**, a 2nd-order multistep solver
-of the probability-flow ODE. Its 1st-order step is algebraically *identical* to
-DDIM (`eta=0`) — proven in the docstring and unit-tested — and the 2nd-order
-term reuses the previous step's `x0` prediction.
+of the probability-flow ODE. Without clipping, its 1st-order equation is
+algebraically equivalent to DDIM (`eta=0`). In this implementation, the
+essential `x0` stability clamp makes their finite-step updates differ. The
+2nd-order term reuses the previous step's `x0` prediction.
 
-The honest result on this model is that it does **not** beat DDIM:
+The historical result on this model is that it does **not** beat DDIM:
 
-| sampler        | FID @ 20 steps | FID @ 50 steps |
+| sampler        | internal score @ 20 steps | internal score @ 50 steps |
 |----------------|----------------|----------------|
 | DDIM (`eta=0`) | 67.64          | **53.23**      |
 | DPM-Solver++ 2M| 73.58          | 64.02          |
 
-Why: the solver needs an `x0 = (x − σ·ε)/α` clamp for stability (`α ≈ 1e-5` at
-high `t`, so an unclamped `x0` explodes). That clamp is essential on a weak
-model (FID 53), but it also *corrupts* the 2nd-order correction term, which
-assumes a smooth `x0` trajectory — so the multistep correction hurts instead of
-helping. The 2nd-order convergence is verified in isolation (a convergence-order
-test confirms the error quarters when steps double), but on a model this weak it
-doesn't pay off. The lesson: higher-order solvers need a well-conditioned model
-(or thresholding-aware correction) to beat DDIM.
+These are single historical pre-hardening runs, not a replicated sampler
+benchmark. Standalone stdout evidence survives for DPM-Solver++ at 20 steps; the
+other sampler-table cells currently rely on the recorded README values.
 
-### Latent diffusion (Stable-Diffusion-style, verified end-to-end)
+The observed stability problem is concrete: at high `t`, `α ≈ 1e-5`, so the
+unclipped estimate `x0 = (x − σ·ε)/α` can become extremely large. The working
+hypothesis is that clipping this estimate disrupts the smooth `x0` trajectory
+assumed by the multistep correction. That mechanism has not been isolated with a
+clipping ablation or an external reference implementation, so it is not claimed
+as a causal result. A synthetic regression test verifies that the 2nd-order path
+reduces numerical error against a finer reference; the historical checkpoint
+comparison only shows that it did not improve this repository's measured image
+score.
+
+### Latent diffusion (recorded end-to-end run; metric rerun pending)
 
 `vae.py` compresses 3×32×32 → 4×8×8 (12× compression) with an L1 reconstruction
 + weak KL (`β=1e-4`) objective; `train_ldm.py` then trains a *smaller* U-Net
 (4.68M params) to denoise those latents instead of pixels.
 
-Two honest numbers, both from the same harness:
+Two historical pre-hardening numbers from the same harness:
 
-| model | FID (n=2048) |
+| model | internal FID-style score (n=2048) |
 |-------|--------------|
 | latent diffusion, **before** latent normalization | 143.43 |
 | latent diffusion, **after** latent normalization | **105.36** |
 | pixel-space DDIM (reference) | 53.23 |
 
-**The bug the -38 points found:** a weak-KL VAE produces latents with per-channel
-std 1.4–2.4 (and near-zero posterior σ — it collapses to a deterministic encoder),
-but the cosine noise schedule assumes ~N(0,1) data. That mismatch badly distorts
-the diffusion's signal-to-noise ratio. The fix — standardize the latents before
-diffusing, un-standardize before decoding (exactly what Stable Diffusion does) —
-dropped FID 143.43 → 105.36 *and* the training loss 0.45 → 0.34.
+**What the -38-point observation suggests:** the measured weak-KL VAE latents
+have per-channel standard deviations of 1.4–2.4 and near-zero posterior σ, while
+the diffusion schedule has an implicit unit-scale signal-to-noise assumption.
+Standardizing the latents before diffusion and reversing that transform before
+decoding addresses the measured scale mismatch. This serves the same goal as
+latent scaling in latent-diffusion systems, while this repository uses measured
+per-channel means and standard deviations. In one historical pair of separately
+trained, unseeded runs, normalization coincided with an internal-score change
+from 143.43 to 105.36 and a training-loss change from 0.45 to 0.34. The scale
+measurements support the mechanism, but the single comparison does not isolate a
+causal effect.
 
-**The honest verdict:** latent diffusion is *implemented and working* end-to-end,
-but it's the wrong tool at 32×32. The remaining gap vs 53.23 is the VAE's L1 blur
-(no perceptual/adversarial loss, which would need a pretrained feature net —
-out of scope for a from-scratch repo) plus a 12× bottleneck on an already
-low-resolution image. Latent diffusion pays off at 256×256+ (memory/compute); at
-CIFAR scale, pixel-space diffusion is strictly better. Shipped as a working
-architecture with a real, measured bug-fix, not a FID winner.
+**Current interpretation:** latent diffusion is implemented and locally
+smoke-tested end-to-end, but the historical latent checkpoint underperformed the
+historical pixel-space checkpoint at 32×32. Likely contributors include VAE
+reconstruction blur and a 12× bottleneck on an already low-resolution image;
+these contributors have not been separated by ablation. Latent diffusion is
+generally aimed at higher resolutions, where spatial compression saves more
+compute. The architecture and regression tests are current; the image-quality
+comparison remains historical pending rerun.
 
 ## Quickstart
 
-```bash
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+```powershell
+# Run from the repository root with the Python version you intend to record.
+python -m venv .venv
+$python = ".\.venv\Scripts\python.exe"
+& $python -m pip install --upgrade pip
+& $python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+& $python -m pip install -r requirements.txt
 
 # Train (CIFAR-10 or MNIST)
-python train.py --dataset cifar10 --epochs 100
-python train.py --dataset mnist --base-ch 32 --epochs 2   # fast smoke run
+& $python train.py --dataset cifar10 --epochs 100
+& $python train.py --dataset mnist --base-ch 32 --epochs 2   # fast smoke run
 
 # Generate samples (DDIM, 50 steps)
-python sample.py --ckpt out/ckpt.pt --channels 3 --n 16
+& $python sample.py --ckpt out/ckpt.pt --channels 3 --n 16
 ```
+
+CIFAR-10 and MNIST download automatically in a fresh clone. The original
+machine's unpacked CIFAR-10 ImageFolder mirror is reused when present.
+`scripts/run_fid_receipts.ps1` uses the repository `.venv` by default; if a
+different environment is selected, pass its interpreter through `-Python`.
+
+### Local meeting demo (no retraining)
+
+The trained checkpoints are intentionally gitignored because they are large and
+are not currently distributed by this repository. The commands below and the
+guarded FID runner provide **owner-machine reproducibility** for the preserved
+local checkpoint files. A clean clone can install, test, and train from source,
+but cannot reproduce the recorded checkpoint scores unless hash-matched model
+artifacts are published separately.
+
+On the original machine, these commands were smoke-tested on CUDA:
+
+```powershell
+# Unconditional CIFAR-10: writes a 2x2 grid in a few seconds
+& $python sample.py --ckpt out_cifar/ckpt.pt --n 4 --steps 10 --out out_cifar/meeting_demo.png
+
+# Class-conditioned CIFAR-10: cycles through all ten classes
+& $python sample.py --ckpt out_cifar_cond/ckpt.pt --n 10 --steps 20 --cfg-scale 2.0 --out out_cifar_cond/meeting_demo.png
+
+# Normalized latent diffusion: demonstrates the VAE + latent denoiser path
+& $python sample_ldm.py --vae-ckpt out_vae/vae.pt --ldm-ckpt out_ldm_norm/ckpt.pt --latent-stats out_ldm_norm/latent_stats.pt --n 4 --steps 10 --out out_ldm_norm/meeting_demo.png
+```
+
+Use the curated `assets/` images for the clearest presentation; 10-step smoke
+outputs prioritize speed over visual quality. Sampling defaults to seed 0 for a
+controlled local rerun; bitwise identity is not guaranteed across hardware or
+library versions.
 
 ## Files
 
@@ -167,5 +242,9 @@ vae.py         # VAE (encoder/decoder) for latent diffusion
 train_vae.py   # train the VAE
 train_ldm.py   # train diffusion in the VAE latent space
 sample_ldm.py  # sample latent diffusion + decode
-fid.py         # Fréchet Inception Distance eval (dependency-free)
+fid.py         # internal FID-style evaluation + machine-readable receipts
+fid_ldm.py     # latent-diffusion evaluation path
+EVALUATION_REPRODUCIBILITY.md  # exact rerun and acceptance protocol
+receipts/      # hash-bound historical evidence inventory
+scripts/run_fid_receipts.ps1  # guarded sequential n=2,048 rerun
 ```

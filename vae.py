@@ -8,26 +8,28 @@ without any pretrained weights.
 
 The encoder predicts a diagonal Gaussian posterior ``(mu, logvar)``; training
 uses the reparameterization trick and a beta-VAE objective (reconstruction +
-weighted KL) so the latent stays roughly unit-Gaussian, which is exactly the
-distribution the diffusion process assumes.
+weighted KL). With a weak KL weight, the latent is not guaranteed to be
+unit-Gaussian, so the downstream training code measures and normalizes it.
 """
 
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class VAEEncoder(nn.Module):
-    def __init__(self, in_channels: int = 3, latent_channels: int = 4, hidden: int = 64):
+    def __init__(
+        self, in_channels: int = 3, latent_channels: int = 4, hidden: int = 64
+    ):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(in_channels, hidden, 3, stride=2, padding=1),     # hidden x16x16
+            nn.Conv2d(in_channels, hidden, 3, stride=2, padding=1),  # hidden x16x16
             nn.SiLU(),
-            nn.Conv2d(hidden, hidden * 2, 3, stride=2, padding=1),      # 2h x8x8
+            nn.Conv2d(hidden, hidden * 2, 3, stride=2, padding=1),  # 2h x8x8
             nn.SiLU(),
-            nn.Conv2d(hidden * 2, hidden * 2, 3, padding=1),            # 2h x8x8
+            nn.Conv2d(hidden * 2, hidden * 2, 3, padding=1),  # 2h x8x8
             nn.SiLU(),
         )
         self.mu = nn.Conv2d(hidden * 2, latent_channels, 1)
@@ -39,14 +41,18 @@ class VAEEncoder(nn.Module):
 
 
 class VAEDecoder(nn.Module):
-    def __init__(self, latent_channels: int = 4, out_channels: int = 3, hidden: int = 64):
+    def __init__(
+        self, latent_channels: int = 4, out_channels: int = 3, hidden: int = 64
+    ):
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(latent_channels, hidden * 2, 3, padding=1),
             nn.SiLU(),
-            nn.ConvTranspose2d(hidden * 2, hidden, 4, stride=2, padding=1),  # hidden x16x16
+            nn.ConvTranspose2d(
+                hidden * 2, hidden, 4, stride=2, padding=1
+            ),  # hidden x16x16
             nn.SiLU(),
-            nn.ConvTranspose2d(hidden, hidden, 4, stride=2, padding=1),      # hidden x32x32
+            nn.ConvTranspose2d(hidden, hidden, 4, stride=2, padding=1),  # hidden x32x32
             nn.SiLU(),
             nn.Conv2d(hidden, out_channels, 3, padding=1),
         )
@@ -58,7 +64,9 @@ class VAEDecoder(nn.Module):
 class VAE(nn.Module):
     """Encoder + reparameterization + decoder, plus the beta-VAE loss."""
 
-    def __init__(self, in_channels: int = 3, latent_channels: int = 4, hidden: int = 64):
+    def __init__(
+        self, in_channels: int = 3, latent_channels: int = 4, hidden: int = 64
+    ):
         super().__init__()
         self.encoder = VAEEncoder(in_channels, latent_channels, hidden)
         self.decoder = VAEDecoder(latent_channels, in_channels, hidden)
@@ -79,13 +87,21 @@ class VAE(nn.Module):
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         return self.decoder(z)
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
         return self.decode(z), mu, logvar
 
 
-def vae_loss(recon: torch.Tensor, x: torch.Tensor, mu: torch.Tensor, logvar: torch.Tensor, beta: float = 1e-4) -> tuple[torch.Tensor, torch.Tensor]:
+def vae_loss(
+    recon: torch.Tensor,
+    x: torch.Tensor,
+    mu: torch.Tensor,
+    logvar: torch.Tensor,
+    beta: float = 1e-4,
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Return ``(total, (recon, kl))`` — reconstruction (L1) + weighted KL.
 
     ``beta`` scales the KL term; a small value keeps the latent informative

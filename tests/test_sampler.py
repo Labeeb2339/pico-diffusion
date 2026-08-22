@@ -2,13 +2,11 @@
 
 Design notes:
 
-* 1st-order DPM-Solver is algebraically identical to DDIM (eta=0) — the two
-  differ only where the ``x0`` clamp engages (they apply the clamp slightly
-  differently).  Verified empirically on the trained checkpoint
-  (max diff ~0.9 over 100 steps, vs ~1e-1 for a single unclamped step).
-* The 2nd-order multistep term is the actual improvement.  A convergence-order
-  test confirms it beats 1st-order against a fine reference; a wrong correction
-  coefficient would fail that check.
+* 1st-order DPM-Solver is algebraically identical to DDIM (eta=0) only without
+  clipping. The two finite-step implementations differ where the essential
+  ``x0`` clamp engages.
+* The 2nd-order multistep term reduces numerical error against a fine reference
+  in this synthetic test. That does not imply better image quality or FID.
 """
 
 import pytest
@@ -16,7 +14,6 @@ import torch
 
 from diffusion import GaussianDiffusion
 from model import UNet
-
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="requires a CUDA GPU"
@@ -49,13 +46,21 @@ def test_dpm_order2_more_accurate_than_order1(model_and_diffusion):
     ref = diffusion.dpm_solver_sample(model, shape, device, sampling_steps=256, order=1)
 
     torch.manual_seed(0)
-    o1_16 = diffusion.dpm_solver_sample(model, shape, device, sampling_steps=16, order=1)
+    o1_16 = diffusion.dpm_solver_sample(
+        model, shape, device, sampling_steps=16, order=1
+    )
     torch.manual_seed(0)
-    o1_32 = diffusion.dpm_solver_sample(model, shape, device, sampling_steps=32, order=1)
+    o1_32 = diffusion.dpm_solver_sample(
+        model, shape, device, sampling_steps=32, order=1
+    )
     torch.manual_seed(0)
-    o2_16 = diffusion.dpm_solver_sample(model, shape, device, sampling_steps=16, order=2)
+    o2_16 = diffusion.dpm_solver_sample(
+        model, shape, device, sampling_steps=16, order=2
+    )
     torch.manual_seed(0)
-    o2_32 = diffusion.dpm_solver_sample(model, shape, device, sampling_steps=32, order=2)
+    o2_32 = diffusion.dpm_solver_sample(
+        model, shape, device, sampling_steps=32, order=2
+    )
 
     e1_16 = (o1_16 - ref).abs().mean().item()
     e1_32 = (o1_32 - ref).abs().mean().item()

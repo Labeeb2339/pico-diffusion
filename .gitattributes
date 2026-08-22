@@ -1,0 +1,7 @@
+* text=auto eol=lf
+
+# Model/data arrays and generated evidence must retain byte-exact hashes.
+*.png binary
+*.pt binary
+*.npy binary
+evaluation_runs/** binary

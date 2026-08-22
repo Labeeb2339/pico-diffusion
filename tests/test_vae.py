@@ -5,7 +5,6 @@ import torch
 
 from vae import VAE, vae_loss
 
-
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="requires a CUDA GPU"
 )

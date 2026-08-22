@@ -21,7 +21,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install numpy pytest
+          python -m pip install numpy pytest ruff
+
+      - name: Static checks
+        run: |
+          python -m ruff check .
+          python -m ruff format --check .
 
       # Model/diffusion/vae/fid tests are CUDA-gated and skip on CPU; the suite
       # still imports every module and collects cleanly, so install + wiring are

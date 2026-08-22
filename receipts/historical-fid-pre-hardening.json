@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "kind": "historical-evaluation-inventory",
+  "assembled_utc": "2026-08-22T15:17:46.0902151Z",
+  "status": "historical-pre-hardening",
+  "current_harness_n2048_rerun_completed": false,
+  "limitations": [
+    "The original runs did not emit a Git commit or dirty-worktree state.",
+    "The original logs did not record every command-line option or the generated-array hashes.",
+    "The hashes below bind the surviving local files inspected on 2026-08-22; they do not retroactively prove the complete original run configuration.",
+    "These are repository-specific 2048-sample FID-style diagnostics, not canonical 50000-sample CIFAR-10 FID."
+  ],
+  "records": [
+    {
+      "name": "pixel-unconditional-ddim50",
+      "internal_fid_style_score": 53.23,
+      "n": 2048,
+      "configuration_source": "README plus historical stdout; full argv was not captured",
+      "checkpoint": {
+        "path": "out_cifar/ckpt.pt",
+        "bytes": 53191937,
+        "modified_utc": "2026-08-15T16:39:45.3717944Z",
+        "sha256": "66b2558ab83193ad0b7c59e4659c87234ef6deb3a5cd520bcf60b66263db86ae"
+      },
+      "stdout_log": {
+        "path": "fid_result.txt",
+        "bytes": 867,
+        "modified_utc": "2026-08-15T17:15:32.1560722Z",
+        "sha256": "07695460e2c0fd7e96717e887333518660fa94a79fce60691c7a526173aca7f4"
+      }
+    },
+    {
+      "name": "pixel-conditional-cfg2-ddim50",
+      "internal_fid_style_score": 39.44,
+      "n": 2048,
+      "configuration_source": "README plus historical stdout; full argv was not captured",
+      "checkpoint": {
+        "path": "out_cifar_cond/ckpt.pt",
+        "bytes": 53214967,
+        "modified_utc": "2026-08-15T19:53:22.7990157Z",
+        "sha256": "40dab3fd865bac48467cc8d60155560eaef3162b744719fffb993a09f5cb63f7"
+      },
+      "stdout_log": {
+        "path": "fid_cond_result.txt",
+        "bytes": 867,
+        "modified_utc": "2026-08-15T20:16:42.3544359Z",
+        "sha256": "6f56a588929cbc529a33b32409a1f32640510df9624f3a0c66e153bf755ae6f9"
+      }
+    },
+    {
+      "name": "pixel-dpm-solver-2m-20-step",
+      "internal_fid_style_score": 73.58,
+      "n": 2048,
+      "configuration_source": "historical stdout identifies sampler and step count; full argv was not captured",
+      "checkpoint_sha256": "66b2558ab83193ad0b7c59e4659c87234ef6deb3a5cd520bcf60b66263db86ae",
+      "stdout_log": {
+        "path": "out_cifar/fid_dpm20.log",
+        "bytes": 938,
+        "modified_utc": "2026-08-16T01:45:29.4882846Z",
+        "sha256": "de903ad3be8412a263986b03d91d0114feca152c724a57091f1279ca5c0d78b9"
+      }
+    },
+    {
+      "name": "latent-before-normalization",
+      "internal_fid_style_score": 143.43,
+      "n": 2048,
+      "configuration_source": "historical stdout; full argv was not captured",
+      "vae_checkpoint_sha256": "8086a4d4425e240c05e723701109295e977239f52981ee39c7e25d5931a9fef7",
+      "ldm_checkpoint": {
+        "path": "out_ldm/ckpt.pt",
+        "bytes": 37542733,
+        "modified_utc": "2026-08-16T03:23:16.2082511Z",
+        "sha256": "1053f76ec010e2e2d37c17d3a381f78cb76fbadbebfe17fd4052881c48644c24"
+      },
+      "stdout_log": {
+        "path": "out_ldm/fid.log",
+        "bytes": 836,
+        "modified_utc": "2026-08-16T03:24:33.5696688Z",
+        "sha256": "2e96fc9f39ca7ee312c54acdd75fa784b1534909726bbb206b7c3bf874a49a6a"
+      }
+    },
+    {
+      "name": "latent-after-normalization",
+      "internal_fid_style_score": 105.36,
+      "n": 2048,
+      "configuration_source": "historical stdout; full argv was not captured",
+      "vae_checkpoint_sha256": "8086a4d4425e240c05e723701109295e977239f52981ee39c7e25d5931a9fef7",
+      "latent_stats_sha256": "405cbe0effdad5076e932cc87d4159fd52d3dc382eec045994ca56d7a6127c60",
+      "ldm_checkpoint": {
+        "path": "out_ldm_norm/ckpt.pt",
+        "bytes": 37542733,
+        "modified_utc": "2026-08-16T04:03:52.1053436Z",
+        "sha256": "e95d78899490666fd049ab52facaa964755d99fa7a807b1074ca08da745a3123"
+      },
+      "stdout_log": {
+        "path": "out_ldm_norm/fid.log",
+        "bytes": 836,
+        "modified_utc": "2026-08-16T04:04:37.3477164Z",
+        "sha256": "0f2bc36189568b1907977b91209e9b8f22326ab535799a9d1ce0246ded4cffe9"
+      }
+    }
+  ],
+  "unbound_readme_values": [
+    {
+      "name": "pixel-ddim-20-step",
+      "internal_fid_style_score": 67.64,
+      "reason": "no standalone stdout receipt was located"
+    },
+    {
+      "name": "pixel-dpm-solver-2m-50-step",
+      "internal_fid_style_score": 64.02,
+      "reason": "no standalone stdout receipt was located"
+    }
+  ]
+}

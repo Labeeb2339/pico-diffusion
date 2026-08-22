@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.pytest-tmp/
 *.py[cod]
 *$py.class
 
@@ -15,6 +16,7 @@ out_mnist/
 out_cifar/
 out_cifar_cond/
 _fid_cache/
+evaluation_runs/
 fid_result.txt
 fid_cond_result.txt
 *.png

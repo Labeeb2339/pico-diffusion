@@ -8,9 +8,8 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from diffusion import GaussianDiffusion  # noqa: E402
-from model import UNet  # noqa: E402
-
+from diffusion import GaussianDiffusion
+from model import UNet
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="requires a CUDA GPU"

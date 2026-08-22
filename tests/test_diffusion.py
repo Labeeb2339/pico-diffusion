@@ -11,7 +11,6 @@ import torch
 from diffusion import GaussianDiffusion
 from model import UNet
 
-
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="requires a CUDA GPU"
 )

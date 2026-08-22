@@ -11,8 +11,8 @@ from __future__ import annotations
 import math
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 def sinusoidal_embedding(t: torch.Tensor, dim: int) -> torch.Tensor:
@@ -50,7 +50,9 @@ class ResBlock(nn.Module):
         self.norm2 = nn.GroupNorm(32, out_ch)
         self.dropout = nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        self.shortcut = nn.Conv2d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
+        self.shortcut = (
+            nn.Conv2d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
+        )
 
     def forward(self, x: torch.Tensor, t_emb: torch.Tensor) -> torch.Tensor:
         h = F.silu(self.norm1(x))
@@ -72,7 +74,9 @@ class SelfAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, H, W = x.shape
-        q, k, v = self.qkv(x).reshape(B, 3, self.n_heads, self.head_dim, H * W).unbind(1)
+        q, k, v = (
+            self.qkv(x).reshape(B, 3, self.n_heads, self.head_dim, H * W).unbind(1)
+        )
         scale = self.head_dim**-0.5
         attn = torch.einsum("bhdl,bhdm->bhlm", q, k) * scale
         attn = F.softmax(attn, dim=-1)
@@ -125,7 +129,9 @@ class UNet(nn.Module):
         self.time_embed = TimeEmbedding(time_dim)
         self.num_classes = num_classes
         # +1 index is the "null" class, used for classifier-free guidance.
-        self.class_emb = nn.Embedding(num_classes + 1, time_dim) if num_classes else None
+        self.class_emb = (
+            nn.Embedding(num_classes + 1, time_dim) if num_classes else None
+        )
         chs = [base_ch * m for m in ch_mults]
 
         self.in_conv = nn.Conv2d(in_channels, chs[0], 3, padding=1)
@@ -134,8 +140,12 @@ class UNet(nn.Module):
         self.downsamplers = nn.ModuleList()
         for i in range(len(chs) - 1):
             use_attn = (image_size >> i) in attn_res
-            self.down_blocks.append(DownBlock(chs[i], chs[i + 1], time_dim, use_attn, dropout))
-            self.downsamplers.append(nn.Conv2d(chs[i + 1], chs[i + 1], 3, stride=2, padding=1))
+            self.down_blocks.append(
+                DownBlock(chs[i], chs[i + 1], time_dim, use_attn, dropout)
+            )
+            self.downsamplers.append(
+                nn.Conv2d(chs[i + 1], chs[i + 1], 3, stride=2, padding=1)
+            )
 
         self.mid1 = ResBlock(chs[-1], chs[-1], time_dim, dropout)
         self.mid_attn = SelfAttention(chs[-1])
@@ -144,14 +154,20 @@ class UNet(nn.Module):
         self.up_blocks = nn.ModuleList()
         self.upsamplers = nn.ModuleList()
         for i in reversed(range(len(chs) - 1)):
-            self.upsamplers.append(nn.ConvTranspose2d(chs[i + 1], chs[i + 1], 4, stride=2, padding=1))
+            self.upsamplers.append(
+                nn.ConvTranspose2d(chs[i + 1], chs[i + 1], 4, stride=2, padding=1)
+            )
             use_attn = (image_size >> i) in attn_res
-            self.up_blocks.append(UpBlock(chs[i + 1], chs[i], time_dim, use_attn, dropout))
+            self.up_blocks.append(
+                UpBlock(chs[i + 1], chs[i], time_dim, use_attn, dropout)
+            )
 
         self.out_norm = nn.GroupNorm(32, chs[0])
         self.out_conv = nn.Conv2d(chs[0], in_channels, 3, padding=1)
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None
+    ) -> torch.Tensor:
         t_emb = self.time_embed(t)
         if y is not None and self.class_emb is not None:
             t_emb = t_emb + self.class_emb(y)
